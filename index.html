@@ -1,34 +1,91 @@
-async function startAdaptiveEngine() {
-    if(isRunning) return;
+<script>
+    // Forza il caricamento di Ethers se non presente
+    const RPC_URL = "https://testnet-passet-hub-eth-rpc.polkadot.io";
+    const ABI = ["function activateSingularity(uint256 intensity) external"];
     
-    // RESET LOG UI
-    out("INIZIALIZZAZIONE...", "pulse");
-    
-    try {
-        const rpcUrl = "https://testnet-passet-hub-eth-rpc.polkadot.io";
+    let isRunning = false;
+    let currentDepth = 2;
+
+    async function startAdaptiveEngine() {
+        if (typeof ethers === "undefined") {
+            alert("Errore: Libreria Ethers.js non caricata. Controlla la connessione internet.");
+            return;
+        }
+
+        if(isRunning) return;
+
         const pKey = document.getElementById('pKey').value.trim();
         const cAddr = document.getElementById('contractAddr').value.trim();
+        const logArea = document.getElementById('log');
 
-        if(!pKey.startsWith("0x")) throw new Error("La Private Key deve iniziare con 0x");
-        if(!ethers.isAddress(cAddr)) throw new Error("Indirizzo Contratto non valido");
+        // Funzione di logging interna per evitare errori di riferimento
+        const out = (m, cls="") => {
+            const div = document.createElement('div');
+            div.className = cls;
+            div.innerHTML = `[${new Date().toLocaleTimeString()}] ${m}`;
+            logArea.insertBefore(div, logArea.firstChild);
+        };
 
-        const provider = new ethers.JsonRpcProvider(rpcUrl);
-        
-        // Verifica connessione RPC
-        const network = await provider.getNetwork();
-        out(`Connesso a Chain ID: ${network.chainId}`, "void");
+        try {
+            out("INIZIALIZZAZIONE SISTEMA...", "pulse");
 
-        const wallet = new ethers.Wallet(pKey, provider);
-        out(`Wallet pronto: ${wallet.address.substring(0,10)}...`);
+            if(!pKey.startsWith("0x") || pKey.length < 64) throw new Error("Private Key non valida o manca 0x");
+            if(!ethers.isAddress(cAddr)) throw new Error("Indirizzo Contratto non valido");
 
-        isRunning = true;
-        document.getElementById('statusInfo').innerText = "STATUS: ONLINE - ATTACKING";
-        
-        // Lancio del loop
-        loop(provider, wallet, cAddr);
+            const provider = new ethers.JsonRpcProvider(RPC_URL);
+            
+            // Test immediato della connessione
+            const network = await provider.getNetwork();
+            out(`Connesso a Chain ID: ${network.chainId}`, "success");
 
-    } catch (e) {
-        out(`ERRORE CRITICO ALL'AVVIO: ${e.message}`, "danger");
-        console.error(e);
+            const wallet = new ethers.Wallet(pKey, provider);
+            out(`Wallet autorizzato: ${wallet.address.substring(0,10)}...`);
+
+            isRunning = true;
+            
+            // DEFINIZIONE DEL LOOP INTERNA (Così non fallisce il riferimento)
+            const internalLoop = async () => {
+                if(!isRunning) return;
+                
+                try {
+                    const contract = new ethers.Contract(cAddr, ABI, wallet);
+                    let nonce = await provider.getTransactionCount(wallet.address, "pending");
+                    
+                    out(`Lancio Pipeline Depth ${currentDepth} | Nonce: ${nonce}`);
+                    
+                    let txs = [];
+                    for(let i=0; i < currentDepth; i++) {
+                        txs.push(contract.activateSingularity(50000, {
+                            gasLimit: 8000000,
+                            nonce: nonce + i
+                        }));
+                    }
+
+                    const start = Date.now();
+                    await Promise.all(txs);
+                    const latency = Date.now() - start;
+                    
+                    out(`Batch Confermato in ${latency}ms`, "success");
+
+                    // Logica Adattiva
+                    if(latency < 3000) currentDepth++;
+                    else if(latency > 7000) currentDepth = Math.max(1, Math.floor(currentDepth/2));
+                    
+                    document.getElementById('curDepth').innerText = currentDepth;
+                    document.getElementById('latency').innerText = latency + "ms";
+
+                    setTimeout(internalLoop, 2000);
+                } catch (err) {
+                    out(`Errore nel loop: ${err.message}`, "danger");
+                    isRunning = false; // Ferma per sicurezza in caso di errore RPC
+                }
+            };
+
+            internalLoop();
+
+        } catch (e) {
+            out(`ERRORE CRITICO: ${e.message}`, "danger");
+            console.error(e);
+        }
     }
-}
+</script>
