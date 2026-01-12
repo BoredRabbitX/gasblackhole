@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <title>VIPER ADAPTIVE V47</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.umd.min.js"></script>
+    <style>
+        :root { --void: #a200ff; --bg: #020202; --danger: #ff0055; }
+        body { background: var(--bg); color: #fff; font-family: 'Inter', sans-serif; display: grid; grid-template-columns: 380px 1fr; height: 100vh; margin: 0; }
+        .sidebar { background: rgba(10,10,10,0.9); border-right: 1px solid #333; padding: 25px; display: flex; flex-direction: column; gap: 15px; }
+        .main { background: #000; display: flex; flex-direction: column; position: relative; }
+        #log { flex-grow: 1; padding: 20px; font-family: 'JetBrains Mono', monospace; font-size: 10px; overflow-y: auto; color: #888; }
+        .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .stat-card { background: #111; padding: 15px; border-radius: 8px; border: 1px solid #222; }
+        .val { font-size: 24px; font-weight: bold; color: var(--void); }
+        .label { font-size: 9px; color: #555; text-transform: uppercase; letter-spacing: 1px; }
+        button { background: var(--void); color: #fff; border: none; padding: 15px; border-radius: 8px; font-weight: 800; cursor: pointer; transition: 0.3s; }
+        button:hover { background: #7b00ff; transform: scale(1.02); }
+        .auto-tag { font-size: 10px; background: var(--void); color: #fff; padding: 2px 6px; border-radius: 4px; float: right; }
+        .pulse { animation: blink 1s infinite; }
+        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
+    </style>
+</head>
+<body>
+
+<div class="sidebar">
+    <h2 style="color:var(--void); margin:0; letter-spacing:-1px;">ADAPTIVE VOID <span style="font-size:10px; font-weight:normal; color:#555;">v47.0</span></h2>
+    
+    <div class="stat-grid">
+        <div class="stat-card">
+            <div class="label">Pipeline Depth</div>
+            <div id="curDepth" class="val">1</div>
+        </div>
+        <div class="stat-card">
+            <div class="label">RPC Latency</div>
+            <div id="latency" class="val">0ms</div>
+        </div>
+    </div>
+
+    <div class="stat-card">
+        <div class="label">Network Health</div>
+        <div id="health" class="val" style="color:#00ff88;">STABLE</div>
+    </div>
+
+    <div class="panel" style="display:flex; flex-direction:column; gap:8px; margin-top:10px;">
+        <label class="label">Smart Settings</label>
+        <div style="font-size:11px; color:#aaa;">Target: <span id="targetIntensity">50k Hash</span></div>
+        <input type="text" id="contractAddr" placeholder="Black Hole Address" style="background:#000; border:1px solid #333; color:#fff; padding:10px;">
+        <input type="password" id="pKey" placeholder="Private Key" style="background:#000; border:1px solid #333; color:#fff; padding:10px;">
+        
+        <button onclick="startAdaptiveEngine()">⚡ AVVIA MOTORE ADATTIVO</button>
+    </div>
+
+    <div id="statusInfo" style="margin-top:auto; font-size:10px; color:#444;">
+        MODE: Dynamic Congestion Control<br>
+        RPC: Paseo Asset Hub (Single Node)
+    </div>
+</div>
+
+<div class="main">
+    <div id="log"></div>
+</div>
+
+<script>
+    const RPC = "https://testnet-passet-hub-eth-rpc.polkadot.io";
+    const ABI = ["function activateSingularity(uint256 intensity) external"];
+    
+    let currentDepth = 2;
+    let maxDepth = 15;
+    let minDepth = 1;
+    let isRunning = false;
+    let lastResponseTime = 0;
+
+    function out(m, cls="") {
+        const l = document.getElementById('log');
+        const div = document.createElement('div');
+        div.style.padding = "4px 0";
+        div.style.borderBottom = "1px solid #111";
+        div.innerHTML = `<span style="color:#444">[${new Date().toLocaleTimeString()}]</span> <span class="${cls}">${m}</span>`;
+        l.insertBefore(div, l.firstChild);
+    }
+
+    async function startAdaptiveEngine() {
+        if(isRunning) return;
+        isRunning = true;
+        out("MOTORE ADATTIVO INIZIALIZZATO. Rilevamento soglia RPC...", "pulse");
+        loop();
+    }
+
+    async function loop() {
+        if(!isRunning) return;
+
+        const provider = new ethers.JsonRpcProvider(RPC);
+        const wallet = new ethers.Wallet(document.getElementById('pKey').value, provider);
+        const addr = document.getElementById('contractAddr').value.trim();
+        const contract = new ethers.Contract(addr, ABI, wallet);
+
+        const startTime = Date.now();
+        
+        try {
+            let nonce = await provider.getTransactionCount(wallet.address, "pending");
+            out(`Esecuzione Batch: Depth ${currentDepth} | Nonce iniziale: ${nonce}`);
+
+            let promises = [];
+            for (let i = 0; i < currentDepth; i++) {
+                // Invio batch
+                promises.push(contract.activateSingularity(50000, {
+                    gasLimit: 8000000,
+                    nonce: nonce + i
+                }));
+            }
+
+            // Aspettiamo che l'RPC accetti tutto il batch
+            await Promise.all(promises);
+            
+            lastResponseTime = Date.now() - startTime;
+            document.getElementById('latency').innerText = lastResponseTime + "ms";
+
+            // LOGICA ADATTIVA
+            if (lastResponseTime < 2500) { 
+                // Se l'RPC risponde in meno di 2.5s, aumentiamo il carico
+                if (currentDepth < maxDepth) {
+                    currentDepth++;
+                    document.getElementById('health').innerText = "AGGRESSIVE";
+                    document.getElementById('health').style.color = "#ff00ff";
+                    out(`RPC Veloce (${lastResponseTime}ms). Aumento Depth a ${currentDepth}`, "void");
+                }
+            } else if (lastResponseTime > 6000) {
+                // Se l'RPC impiega più di 6s, riduciamo drasticamente per evitare ban
+                currentDepth = Math.max(minDepth, Math.floor(currentDepth / 2));
+                document.getElementById('health').innerText = "THROTTLED";
+                document.getElementById('health').style.color = var(--danger);
+                out(`RPC Lento (${lastResponseTime}ms). Riduzione cautelativa a ${currentDepth}`, "danger");
+            }
+
+            document.getElementById('curDepth').innerText = currentDepth;
+            
+            // Pausa variabile basata sulla latenza per simulare traffico umano
+            setTimeout(loop, lastResponseTime > 5000 ? 5000 : 2000);
+
+        } catch (e) {
+            out(`ERRORE RPC: Rilevata protezione o congestione. Reset Depth.`, "danger");
+            currentDepth = minDepth;
+            document.getElementById('curDepth').innerText = currentDepth;
+            document.getElementById('health').innerText = "RECOVERING";
+            document.getElementById('health').style.color = "#ff9900";
+            setTimeout(loop, 10000); // Pausa lunga di 10s per far scadere eventuali ban temporanei
+        }
+    }
+</script>
+</body>
+</html>
