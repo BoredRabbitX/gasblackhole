@@ -1,91 +1,117 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <title>HYDRA STORM V50</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.umd.min.js"></script>
+    <style>
+        :root { --fire: #ff3c00; --glass: rgba(255, 255, 255, 0.05); }
+        body { background: #000; color: var(--fire); font-family: 'JetBrains Mono', monospace; margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; }
+        .terminal { background: var(--glass); backdrop-filter: blur(20px); border: 1px solid rgba(255,60,0,0.2); width: 950px; height: 700px; border-radius: 15px; display: grid; grid-template-columns: 350px 1fr; overflow: hidden; box-shadow: 0 0 50px rgba(255,60,0,0.1); }
+        .sidebar { padding: 30px; border-right: 1px solid rgba(255,60,0,0.1); display: flex; flex-direction: column; gap: 20px; }
+        #log { padding: 20px; overflow-y: auto; font-size: 10px; color: #ffaa99; line-height: 1.4; background: rgba(0,0,0,0.3); }
+        .stat-box { background: #111; padding: 15px; border-left: 4px solid var(--fire); }
+        .val { font-size: 24px; font-weight: bold; color: #fff; }
+        input { background: #000; border: 1px solid #333; color: #fff; padding: 12px; font-size: 11px; }
+        button { background: var(--fire); color: #000; border: none; padding: 20px; font-weight: 900; cursor: pointer; text-transform: uppercase; transition: 0.3s; }
+        button:hover { background: #fff; color: var(--fire); }
+        .active-node { color: #00ff41; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div class="terminal">
+    <div class="sidebar">
+        <h2 style="margin:0; letter-spacing:4px;">HYDRA STORM</h2>
+        <div class="stat-box">
+            <div style="font-size:9px; color:#666;">CODA ATTIVA (ALVEARE)</div>
+            <div id="qSize" class="val">0</div>
+        </div>
+        <div class="stat-box">
+            <div style="font-size:9px; color:#666;">GEN. MASSIMA RAGGIUNTA</div>
+            <div id="maxGen" class="val">0</div>
+        </div>
+        <input type="text" id="target" placeholder="Indirizzo Gen 0">
+        <input type="password" id="pKey" placeholder="Private Key Master">
+        <button onclick="igniteStorm()">🚀 LANCIA STORM</button>
+        <div style="font-size:9px; color:#444; margin-top:auto;">
+            MODE: BINARY RECURSION<br>
+            LOAD: 100 ADDR/TX<br>
+            LIMIT: MAX GAS BLOCK
+        </div>
+    </div>
+    <div id="log"></div>
+</div>
+
 <script>
-    // Forza il caricamento di Ethers se non presente
-    const RPC_URL = "https://testnet-passet-hub-eth-rpc.polkadot.io";
-    const ABI = ["function activateSingularity(uint256 intensity) external"];
-    
+    const RPC = "https://testnet-passet-hub-eth-rpc.polkadot.io";
+    const ABI = ["function storm(uint256 gen, address[] targets) external", "event CloneDeployed(address indexed newClone, uint256 gen)"];
+    let queue = [];
     let isRunning = false;
-    let currentDepth = 2;
+    let highGen = 0;
 
-    async function startAdaptiveEngine() {
-        if (typeof ethers === "undefined") {
-            alert("Errore: Libreria Ethers.js non caricata. Controlla la connessione internet.");
-            return;
-        }
+    function out(m, cls="") {
+        const l = document.getElementById('log');
+        const d = document.createElement('div');
+        d.className = cls;
+        d.innerHTML = `[${new Date().toLocaleTimeString()}] ${m}`;
+        l.insertBefore(d, l.firstChild);
+    }
 
+    async function igniteStorm() {
         if(isRunning) return;
+        const start = document.getElementById('target').value.trim();
+        if(!start) return;
+        queue.push({addr: start, gen: 0});
+        isRunning = true;
+        processQueue();
+    }
 
-        const pKey = document.getElementById('pKey').value.trim();
-        const cAddr = document.getElementById('contractAddr').value.trim();
-        const logArea = document.getElementById('log');
+    async function processQueue() {
+        if(!isRunning || queue.length === 0) return;
 
-        // Funzione di logging interna per evitare errori di riferimento
-        const out = (m, cls="") => {
-            const div = document.createElement('div');
-            div.className = cls;
-            div.innerHTML = `[${new Date().toLocaleTimeString()}] ${m}`;
-            logArea.insertBefore(div, logArea.firstChild);
-        };
+        const current = queue.shift();
+        document.getElementById('qSize').innerText = queue.length;
+
+        const provider = new ethers.JsonRpcProvider(RPC);
+        const wallet = new ethers.Wallet(document.getElementById('pKey').value.trim(), provider);
+        const contract = new ethers.Contract(current.addr, ABI, wallet);
 
         try {
-            out("INIZIALIZZAZIONE SISTEMA...", "pulse");
-
-            if(!pKey.startsWith("0x") || pKey.length < 64) throw new Error("Private Key non valida o manca 0x");
-            if(!ethers.isAddress(cAddr)) throw new Error("Indirizzo Contratto non valido");
-
-            const provider = new ethers.JsonRpcProvider(RPC_URL);
+            out(`ASSALTO SU GEN ${current.gen}: ${current.addr.substring(0,15)}...`, "active-node");
             
-            // Test immediato della connessione
-            const network = await provider.getNetwork();
-            out(`Connesso a Chain ID: ${network.chainId}`, "success");
+            // 100 Indirizzi casuali per massimizzare la saturazione
+            const targets = Array.from({length: 100}, () => ethers.Wallet.createRandom().address);
 
-            const wallet = new ethers.Wallet(pKey, provider);
-            out(`Wallet autorizzato: ${wallet.address.substring(0,10)}...`);
-
-            isRunning = true;
+            // Alziamo il Gas Limit a 20M per permettere la doppia clonazione + 100 trasferimenti
+            const tx = await contract.storm(current.gen, targets, { gasLimit: 20000000 });
+            out(`TX Broadcasted: ${tx.hash.substring(0,25)}...`);
             
-            // DEFINIZIONE DEL LOOP INTERNA (Così non fallisce il riferimento)
-            const internalLoop = async () => {
-                if(!isRunning) return;
-                
-                try {
-                    const contract = new ethers.Contract(cAddr, ABI, wallet);
-                    let nonce = await provider.getTransactionCount(wallet.address, "pending");
-                    
-                    out(`Lancio Pipeline Depth ${currentDepth} | Nonce: ${nonce}`);
-                    
-                    let txs = [];
-                    for(let i=0; i < currentDepth; i++) {
-                        txs.push(contract.activateSingularity(50000, {
-                            gasLimit: 8000000,
-                            nonce: nonce + i
-                        }));
-                    }
-
-                    const start = Date.now();
-                    await Promise.all(txs);
-                    const latency = Date.now() - start;
-                    
-                    out(`Batch Confermato in ${latency}ms`, "success");
-
-                    // Logica Adattiva
-                    if(latency < 3000) currentDepth++;
-                    else if(latency > 7000) currentDepth = Math.max(1, Math.floor(currentDepth/2));
-                    
-                    document.getElementById('curDepth').innerText = currentDepth;
-                    document.getElementById('latency').innerText = latency + "ms";
-
-                    setTimeout(internalLoop, 2000);
-                } catch (err) {
-                    out(`Errore nel loop: ${err.message}`, "danger");
-                    isRunning = false; // Ferma per sicurezza in caso di errore RPC
+            const receipt = await tx.wait();
+            
+            // Cattura i due nuovi cloni dagli eventi
+            const topic = ethers.id("CloneDeployed(address,uint256)");
+            receipt.logs.forEach(l => {
+                if(l.topics[0] === topic) {
+                    const nextAddr = ethers.getAddress("0x" + l.topics[1].slice(26));
+                    const nextGen = current.gen + 1;
+                    queue.push({addr: nextAddr, gen: nextGen});
+                    if(nextGen > highGen) highGen = nextGen;
                 }
-            };
+            });
 
-            internalLoop();
+            document.getElementById('maxGen').innerText = highGen;
+            document.getElementById('qSize').innerText = queue.length;
+            out(`SUCCESS: 2 cloni generati. Coda aggiornata.`, "active-node");
+
+            // Esecuzione immediata sulla prossima della coda (nessun delay)
+            processQueue();
 
         } catch (e) {
-            out(`ERRORE CRITICO: ${e.message}`, "danger");
-            console.error(e);
+            out(`REVERT: Nodo saltato o gas insufficiente.`, "gray");
+            setTimeout(processQueue, 1000);
         }
     }
 </script>
+</body>
+</html>
